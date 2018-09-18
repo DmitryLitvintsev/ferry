@@ -18,10 +18,10 @@ NULL_CAPABILITY = "/Capability=NULL"
 NULL_ROLE = "/Role=NULL"
 
 def filterOutNullCapability(fqan):
-    return re.sub(NULL_CAPABILITY,"",fqan) 
+    return re.sub(NULL_CAPABILITY,"",fqan)
 
 def filterOutNullRole(fqan):
-    return re.sub(NULL_ROLE,"",fqan) 
+    return re.sub(NULL_ROLE,"",fqan)
 
 
 def print_error(text):
@@ -146,11 +146,11 @@ class StorageAuthzDb(FerryFileRetriever):
             if item.get("username") == "simons" :
                 continue
             if item.get("username") == "ifisk" :
-                item["root"] = "pnfs/fnal.gov/usr/Simons"
+                item["root"] = "/pnfs/fnal.gov/usr/Simons"
                 item["uid"] = "49331"
                 item["gid"] = ["9323",]
             if item.get("username") == "auger" :
-                item["root"] = "pnfs/fnal.gov/usr/fermigrid/volatile/auger"
+                item["root"] = "/pnfs/fnal.gov/usr/fermigrid/volatile/auger"
             try:
                 gids=map(int,item.get("gid"))
             except Exception as e:
@@ -188,7 +188,7 @@ class VoGroup(FerryFileRetriever):
             item["fqan"] = filterOutNullRole(filterOutNullCapability(item.get("fqan")))
         os.write(fd,json.dumps(body, indent=4, sort_keys=True))
         return name
-   
+
 if __name__ == "__main__":
 
     try:
