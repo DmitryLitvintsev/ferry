@@ -71,7 +71,7 @@ class Ferry(object):
         self.curl.setopt(pycurl.CAPATH,"/etc/grid-security/certificates")
         self.curl.setopt(pycurl.SSLCERT,"/etc/grid-security/hostcert.pem")
         self.curl.setopt(pycurl.SSLKEY,"/etc/grid-security/hostkey.pem")
-        
+
 
     def execute(self, query):
         url = self.url + query
@@ -190,12 +190,17 @@ class VoGroup(FerryFileRetriever):
 class Passwd(FerryFileRetriever):
     def __init__(self, ferryconnect):
         super(Passwd, self).__init__(ferryconnect,
-                                     "getPasswdFile?resourcename=fermi_workers",
+                                     "getPasswdFile",
                                      "/etc/grid-security/passwd")
 
     def write_file(self):
         body = self.ferry.execute(self.query)
-        b = body.get('null').get('resources').get('fermi_workers')
+        passwd = []
+        b = []
+        for k,v in body.iteritems():
+            for key, value in v.get("resources").iteritems():
+                b += filter(lambda x : x.get("uid") not in passwd, value)
+                passwd += [x.get("uid") for x in value]
         b.sort(key=lambda x: x["username"])
         fd, name = tempfile.mkstemp(text=True)
         map(lambda x: os.write(fd,"%s:x:%s:%s:\"%s\":%s:%s\n"%(x.get("username"),
