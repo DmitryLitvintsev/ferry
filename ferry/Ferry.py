@@ -104,6 +104,7 @@ class FerryFileRetriever(object):
     def retrieve(self):
         name = self.write_file()
         shutil.move(name, self.filename)
+        os.chmod(self.filename,0644)
 
     def __repr__(self):
         return self.filename
@@ -190,7 +191,7 @@ class VoGroup(FerryFileRetriever):
 class Passwd(FerryFileRetriever):
     def __init__(self, ferryconnect):
         super(Passwd, self).__init__(ferryconnect,
-                                     "getPasswdFile",
+                                     "getStorageAuthzDBFile?passwdmode=true",
                                      "/etc/grid-security/passwd")
 
     def write_file(self):
