@@ -121,7 +121,9 @@ class GridMapFile(FerryFileRetriever):
         body = self.ferry.execute(self.query)
         body.sort(key=lambda x: x["userdn"])
         fd, name = tempfile.mkstemp(text=True)
-        map(lambda x: os.write(fd,"\"%s\" %s\n"%(x.get("userdn"),
+        map(lambda x: os.write(fd,"\"%s\" %s\n"%(x.get("userdn")
+                                                 .replace("/postalCode","/PostalCode")
+                                                 .replace("/street","/STREET"),
                                                  x.get("mapped_uname"))),
             body)
         os.close(fd)
