@@ -15,7 +15,7 @@ import urllib
 
 from StringIO import StringIO
 
-
+SUCCESS="success"
 NULL_CAPABILITY = "/Capability=NULL"
 NULL_ROLE = "/Role=NULL"
 
@@ -25,6 +25,11 @@ def filterOutNullCapability(fqan):
 def filterOutNullRole(fqan):
     return re.sub(NULL_ROLE,"",fqan)
 
+def massageWildcard(fqan):
+    return re.sub("\/\*$","*",fqan)
+
+def massageProduction(fqan):
+    return re.sub("Role=production\*$","Role=production",fqan)
 
 def print_error(text):
     sys.stderr.write(time.strftime("%Y-%m-%d %H:%M:%S",
@@ -55,7 +60,7 @@ def execute_command(cmd):
 
 #DEFAULT_HOST = "fermicloud033.fnal.gov"
 DEFAULT_HOST = "ferry.fnal.gov"
-DEFAULT_PORT = 8443
+DEFAULT_PORT = 8445
 
 class Ferry(object):
     def __init__(self, host=None, port=None):
@@ -71,7 +76,25 @@ class Ferry(object):
         self.curl.setopt(pycurl.CAPATH,"/etc/grid-security/certificates")
         self.curl.setopt(pycurl.SSLCERT,"/etc/grid-security/hostcert.pem")
         self.curl.setopt(pycurl.SSLKEY,"/etc/grid-security/hostkey.pem")
+        self.api_version = 1
+        self.ping()
 
+    def ping(self):
+        url = self.url + "ping"
+        buffer = io.BytesIO()
+        self.curl.setopt(pycurl.URL, url)
+        self.curl.setopt(pycurl.WRITEFUNCTION, buffer.write)
+
+        self.curl.perform()
+        rc=self.curl.getinfo(pycurl.HTTP_CODE)
+
+        if rc != 200 :
+            raise Exception("Failed to ping Ferry %s %s"%(url, rc,))
+
+        data = json.load(StringIO(buffer.getvalue()))
+
+        if isinstance(data, dict):
+            self.api_version = 2
 
     def execute(self, query):
         url = self.url + query
@@ -84,7 +107,18 @@ class Ferry(object):
 
         if rc != 200 :
             raise Exception("Failed to execute query %s"%(rc,))
-        return json.load(StringIO(buffer.getvalue()))
+
+        data = json.load(StringIO(buffer.getvalue()))
+        if self.api_version == 2:
+            ferry_status = data.get("ferry_status")
+            ferry_error = data.get("ferry_error",[])
+            if ferry_status != SUCCESS:
+                raise Exception("Ferry Failed to execute query %s %s : "%(url,
+                                                                          " ".join(ferry_error)))
+            else:
+                return  data.get("ferry_output")
+        return data
+        #return json.load(StringIO(buffer.getvalue()))
         #return buffer.getvalue()
 
 class FerryFileRetriever(object):
@@ -118,13 +152,18 @@ class GridMapFile(FerryFileRetriever):
                                          "/etc/grid-security/grid-mapfile")
 
     def write_file(self):
+        dn_kword = "dn"
+        name_kword = "username"
+        if self.ferry.api_version == 1:
+            dn_kword = "userdn"
+            name_kword = "mapped_uname"
         body = self.ferry.execute(self.query)
-        body.sort(key=lambda x: x["userdn"])
+        body.sort(key=lambda x: x[dn_kword])
         fd, name = tempfile.mkstemp(text=True)
-        map(lambda x: os.write(fd,"\"%s\" %s\n"%(x.get("userdn")
+        map(lambda x: os.write(fd,"\"%s\" %s\n"%(x.get(dn_kword)
                                                  .replace("/postalCode","/PostalCode")
                                                  .replace("/street","/STREET"),
-                                                 x.get("mapped_uname"))),
+                                                 x.get(name_kword))),
             body)
         os.close(fd)
         return name
@@ -139,6 +178,13 @@ class StorageAuthzDb(FerryFileRetriever):
 
     def write_file(self):
         body = self.ferry.execute(self.query)
+        group_kword = "groups"
+        home_kword = "homedir"
+        path_kword = "path"
+        if self.ferry.api_version == 1:
+            group_kword = "gid"
+            home_kword = "home"
+            path_kword = "fs_path"
         body.sort(key=lambda x: x["username"])
         fd, name = tempfile.mkstemp(text=True)
         for item in body:
@@ -149,25 +195,28 @@ class StorageAuthzDb(FerryFileRetriever):
                 continue
             if item.get("username") == "ifisk" :
                 item["root"] = "/pnfs/fnal.gov/usr/Simons"
-                item["uid"] = "49331"
-                item["gid"] = ["9323",]
+                if  self.ferry.api_version == 1:
+                    item["uid"] = "49331"
+                    item[group_kword] = ["9323",]
+                else:
+                    item["uid"] = 49331
+                    item[group_kword] = [9323,]
             if item.get("username") == "auger" :
                 item["root"] = "/pnfs/fnal.gov/usr/fermigrid/volatile/auger"
             try:
-                gids=map(int,item.get("gid"))
+                gids=map(int,item.get(group_kword))
             except Exception as e:
-                print item
-                print str(e)
                 continue
             gids.sort()
+
             os.write(fd,"%s\n"%(string.join([item.get("decision","authorize"),
                                              item.get("username"),
                                              item.get("privileges"),
-                                             item.get("uid"),
+                                             str(item.get("uid")),
                                              string.join(map(str,gids),","),
-                                             item.get("home","/"),
+                                             item.get(home_kword,"/"),
                                              item.get("root"),
-                                             item.get("last_path","/")],
+                                             item.get(path_kword,"/")],
                                             " ")))
         os.close(fd)
         return name
@@ -182,30 +231,37 @@ class VoGroup(FerryFileRetriever):
 
     def write_file(self):
         body = self.ferry.execute(self.query)
-        body.sort(key=lambda x: x["fqan"])
+        body.sort(key=lambda x: x["fqan"], reverse=True)
         fd, name = tempfile.mkstemp(text=True)
         for item in body:
-            item["fqan"] = filterOutNullRole(filterOutNullCapability(item.get("fqan")))
+            item["fqan"] = massageProduction(massageWildcard(filterOutNullRole(filterOutNullCapability(item.get("fqan")))))
+            if self.ferry.api_version == 2:
+                item["mapped_gid"] = str(item["mapped_gid"])
         os.write(fd,json.dumps(body, indent=4, sort_keys=True))
         return name
 
 
 class Passwd(FerryFileRetriever):
     def __init__(self, ferryconnect):
+        if ferryconnect.api_version == 2:
+            query = "getStorageAuthzDBFile?passwdmode"
+        else:
+            query = "getStorageAuthzDBFile?passwdmode=true"
+
         super(Passwd, self).__init__(ferryconnect,
-                                     "getStorageAuthzDBFile?passwdmode=true",
+                                     query,
                                      "/etc/grid-security/passwd")
 
     def write_file(self):
         body = self.ferry.execute(self.query)
         passwd = []
         b = []
+        fd, name = tempfile.mkstemp(text=True)
         for k,v in body.iteritems():
             for key, value in v.get("resources").iteritems():
                 b += filter(lambda x : x.get("uid") not in passwd, value)
                 passwd += [x.get("uid") for x in value]
         b.sort(key=lambda x: x["username"])
-        fd, name = tempfile.mkstemp(text=True)
         map(lambda x: os.write(fd,"%s:x:%s:%s:\"%s\":%s:%s\n"%(x.get("username"),
                                                                x.get("uid"),
                                                                x.get("gid"),
@@ -219,23 +275,34 @@ class Passwd(FerryFileRetriever):
 
 class Group(FerryFileRetriever):
     def __init__(self, ferryconnect):
+        if ferryconnect.api_version == 2:
+            query = "getAllGroupsMembers"
+        else:
+            query = "getAllGroupsMembers"
         super(Group, self).__init__(ferryconnect,
-                                     "getAllGroups?type=UnixGroup",
-                                     "/etc/grid-security/group")
+                                    query,
+                                    "/etc/grid-security/group")
 
     def write_file(self):
         body = self.ferry.execute(self.query)
-        body.sort(key=lambda x: x["name"])
+        kword = "groupname"
+        if self.ferry.api_version == 1:
+            kword = "name"
+            body = filter(lambda x: x["type"] == "UnixGroup", body)
+        if self.ferry.api_version == 2:
+            body = filter(lambda x: x["grouptype"] == "UnixGroup", body)
+
+        body.sort(key=lambda x: x[kword])
         fd, name = tempfile.mkstemp(text=True)
         for i in body:
-            group = str(i.get('name'))
+            group = str(i.get(kword))
             if not group: continue
             if group.find(" ") != -1 :
                 continue
             gid = i.get('gid')
-            users = self.ferry.execute("getGroupMembers?groupname=%s&type=UnixGroup" %(group, ))
-            if str(users).find("ferry_error") != -1:
-                continue
+            users = i.get("members",[])
+            if not users : users = []
+            users = filter(lambda x : x["username"] != "", users)
             users.sort(key=lambda x: x["username"])
             os.write(fd,"%s:x:%s:%s\n" % (group, gid, string.join([ x['username'] for x in users],",")))
         os.close(fd)
