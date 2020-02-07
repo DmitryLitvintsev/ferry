@@ -138,7 +138,7 @@ class FerryFileRetriever(object):
     def retrieve(self):
         name = self.write_file()
         shutil.move(name, self.filename)
-        os.chmod(self.filename,0644)
+        os.chmod(self.filename,0o644)
 
     def __repr__(self):
         return self.filename
