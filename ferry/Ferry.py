@@ -13,7 +13,10 @@ import tempfile
 import time
 import urllib
 
-from StringIO import StringIO
+try:
+    from StringIO import StringIO
+except:
+    from io import BytesIO as StringIO
 
 SUCCESS="success"
 NULL_CAPABILITY = "/Capability=NULL"
