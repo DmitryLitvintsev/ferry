@@ -60,7 +60,7 @@ def execute_command(cmd):
                                                               errors.replace('\n',' ')))
     return rc
 
-DEFAULT_HOST = "ferry"
+DEFAULT_HOST = "ferry.fnal.gov"
 DEFAULT_PORT = 8445
 
 class Ferry(object):
@@ -266,7 +266,7 @@ class CapabilitySet(FerryFileRetriever):
             users[i["username"]] = i["uid"]
 
         body = self.ferry.execute(self.query)
-
+        
         f1 = open("/tmp/multimap.conf", "w")
         f2 = open("/tmp/multimap_prd.conf", "w")
         f = None
@@ -277,16 +277,16 @@ class CapabilitySet(FerryFileRetriever):
             uname = item.get("setname")
 
             uid = users.get(uname)
-            if not uid:
+            if not uid: 
                 continue
 
             for role_data in roles:
                 role = role_data.get("role")
                 if not role : continue
-                group_name = role_data.get("mappedgroup")
+                group_name = role_data.get("mappedgroup")            
 
                 gid = groups.get(group_name)
-                if not gid:
+                if not gid: 
                     continue
 
 
@@ -296,13 +296,13 @@ class CapabilitySet(FerryFileRetriever):
                     fqan = "/"+unit_name
                     f = f1
                 else:
-                    fqan = "/" + unit_name + "/" + role.lower()
-                    f = f2
-                f.write("oidcgrp:%s username:%s uid:%s gid:%s,true\n" %
+                    fqan = "/" + unit_name + "/" + role.lower() 
+                    f = f2 
+                f.write("oidcgrp:%s username:%s uid:%s gid:%s,true\n" % 
                         (fqan, uname, uid, gid))
 
         map(lambda x: x.close(), (f1, f2))
-
+        
         fd, name = tempfile.mkstemp(text=True)
         os.write(fd,json.dumps(body, indent=4, sort_keys=True))
         return name
@@ -337,6 +337,43 @@ class Passwd(FerryFileRetriever):
                                                                x.get("shell"),)),
             b)
         os.close(fd)
+        return name
+
+
+class BanFile(FerryFileRetriever):
+    def __init__(self, ferryconnect):
+        query = "getAllUsersFQANs?suspend=true"
+        super(BanFile, self).__init__(ferryconnect,
+                                      query,
+                                      "/etc/dcache/ban_ferry.conf")
+
+    def write_file(self):
+        body = self.ferry.execute(self.query)
+        passwd = []
+        b = []
+        fd, name = tempfile.mkstemp(text=True)
+        os.write(fd,("alias name=org.dcache.auth.UserNamePrincipal\n"
+                     "alias dn=org.globus.gsi.gssapi.jaas.GlobusPrincipal\n"
+                     "alias kerberos=javax.security.auth.kerberos.KerberosPrincipal\n"
+                     "alias fqan=org.dcache.auth.FQANPrincipal\n"))
+        for k, v in body.iteritems():   
+            os.write(fd, "ban user:%s\n" % (k, ))
+        os.close(fd)
+        
+
+#        for k,v in body.iteritems():
+#            for key, value in v.get("resources").iteritems():
+#                b += filter(lambda x : x.get("uid") not in passwd, value)
+#                passwd += [x.get("uid") for x in value]
+#        b.sort(key=lambda x: x["username"])
+#        map(lambda x: os.write(fd,"%s:x:%s:%s:\"%s\":%s:%s\n"%(x.get("username"),
+#                                                               x.get("uid"),
+#                                                               x.get("gid"),
+#                                                               x.get("gecos"),
+#                                                               x.get("homedir"),
+#                                                               x.get("shell"),)),
+#            b)
+#        os.close(fd)
         return name
 
 
@@ -385,7 +422,7 @@ if __name__ == "__main__":
 
     fail = False
     fails = {}
-    for i in (CapabilitySet(f),):
+    for i in (CapabilitySet(f), BanFile(f),):
 
         try:
             i.retrieve()
@@ -398,3 +435,10 @@ if __name__ == "__main__":
         for key, value in fails.items():
              print_error("%s : %s"%(key, value,))
         sys.exit(1)
+
+
+
+
+
+
+
