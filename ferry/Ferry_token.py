@@ -60,8 +60,7 @@ def execute_command(cmd):
                                                               errors.replace('\n',' ')))
     return rc
 
-#DEFAULT_HOST = "fermicloud033.fnal.gov"
-DEFAULT_HOST = "ferry.fnal.gov"
+DEFAULT_HOST = "ferry"
 DEFAULT_PORT = 8445
 
 class Ferry(object):
@@ -267,7 +266,7 @@ class CapabilitySet(FerryFileRetriever):
             users[i["username"]] = i["uid"]
 
         body = self.ferry.execute(self.query)
-        
+
         f1 = open("/tmp/multimap.conf", "w")
         f2 = open("/tmp/multimap_prd.conf", "w")
         f = None
@@ -278,16 +277,16 @@ class CapabilitySet(FerryFileRetriever):
             uname = item.get("setname")
 
             uid = users.get(uname)
-            if not uid: 
+            if not uid:
                 continue
 
             for role_data in roles:
                 role = role_data.get("role")
                 if not role : continue
-                group_name = role_data.get("mappedgroup")            
+                group_name = role_data.get("mappedgroup")
 
                 gid = groups.get(group_name)
-                if not gid: 
+                if not gid:
                     continue
 
 
@@ -297,13 +296,13 @@ class CapabilitySet(FerryFileRetriever):
                     fqan = "/"+unit_name
                     f = f1
                 else:
-                    fqan = "/" + unit_name + "/" + role.lower() 
-                    f = f2 
-                f.write("oidcgrp:%s username:%s uid:%s gid:%s,true\n" % 
+                    fqan = "/" + unit_name + "/" + role.lower()
+                    f = f2
+                f.write("oidcgrp:%s username:%s uid:%s gid:%s,true\n" %
                         (fqan, uname, uid, gid))
 
         map(lambda x: x.close(), (f1, f2))
-        
+
         fd, name = tempfile.mkstemp(text=True)
         os.write(fd,json.dumps(body, indent=4, sort_keys=True))
         return name
@@ -399,10 +398,3 @@ if __name__ == "__main__":
         for key, value in fails.items():
              print_error("%s : %s"%(key, value,))
         sys.exit(1)
-
-
-
-
-
-
-
