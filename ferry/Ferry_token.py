@@ -266,7 +266,7 @@ class CapabilitySet(FerryFileRetriever):
             users[i["username"]] = i["uid"]
 
         body = self.ferry.execute(self.query)
-        
+
         f1 = open("/tmp/multimap.conf", "w")
         f2 = open("/tmp/multimap_prd.conf", "w")
         f = None
@@ -277,16 +277,16 @@ class CapabilitySet(FerryFileRetriever):
             uname = item.get("setname")
 
             uid = users.get(uname)
-            if not uid: 
+            if not uid:
                 continue
 
             for role_data in roles:
                 role = role_data.get("role")
                 if not role : continue
-                group_name = role_data.get("mappedgroup")            
+                group_name = role_data.get("mappedgroup")
 
                 gid = groups.get(group_name)
-                if not gid: 
+                if not gid:
                     continue
 
 
@@ -296,13 +296,13 @@ class CapabilitySet(FerryFileRetriever):
                     fqan = "/"+unit_name
                     f = f1
                 else:
-                    fqan = "/" + unit_name + "/" + role.lower() 
-                    f = f2 
-                f.write("oidcgrp:%s username:%s uid:%s gid:%s,true\n" % 
+                    fqan = "/" + unit_name + "/" + role.lower()
+                    f = f2
+                f.write("oidcgrp:%s username:%s uid:%s gid:%s,true\n" %
                         (fqan, uname, uid, gid))
 
         map(lambda x: x.close(), (f1, f2))
-        
+
         fd, name = tempfile.mkstemp(text=True)
         os.write(fd,json.dumps(body, indent=4, sort_keys=True))
         return name
@@ -356,10 +356,10 @@ class BanFile(FerryFileRetriever):
                      "alias dn=org.globus.gsi.gssapi.jaas.GlobusPrincipal\n"
                      "alias kerberos=javax.security.auth.kerberos.KerberosPrincipal\n"
                      "alias fqan=org.dcache.auth.FQANPrincipal\n"))
-        for k, v in body.iteritems():   
+        for k, v in body.iteritems():
             os.write(fd, "ban user:%s\n" % (k, ))
         os.close(fd)
-        
+
 
 #        for k,v in body.iteritems():
 #            for key, value in v.get("resources").iteritems():
@@ -422,8 +422,13 @@ if __name__ == "__main__":
 
     fail = False
     fails = {}
-    for i in (CapabilitySet(f), BanFile(f),):
-
+    for i in (Passwd(f),
+              Group(f),
+              GridMapFile(f),
+              StorageAuthzDb(f),
+              VoGroup(f),
+              CapabilitySet(f),
+              BanFile(f),):
         try:
             i.retrieve()
         except Exception as e:
@@ -435,10 +440,3 @@ if __name__ == "__main__":
         for key, value in fails.items():
              print_error("%s : %s"%(key, value,))
         sys.exit(1)
-
-
-
-
-
-
-
