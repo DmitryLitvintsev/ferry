@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import print_function
-
 import io
 import json
 import pycurl
@@ -15,7 +13,10 @@ import tempfile
 import time
 import urllib
 
-from StringIO import StringIO
+try:
+    from StringIO import StringIO
+except:
+    from io import BytesIO as StringIO
 
 SUCCESS="success"
 NULL_CAPABILITY = "/Capability=NULL"
@@ -60,6 +61,7 @@ def execute_command(cmd):
                                                               errors.replace('\n',' ')))
     return rc
 
+#DEFAULT_HOST = "fermicloud033.fnal.gov"
 DEFAULT_HOST = "ferry.fnal.gov"
 DEFAULT_PORT = 8445
 
@@ -139,7 +141,7 @@ class FerryFileRetriever(object):
     def retrieve(self):
         name = self.write_file()
         shutil.move(name, self.filename)
-        os.chmod(self.filename,0644)
+        os.chmod(self.filename,0o644)
 
     def __repr__(self):
         return self.filename
@@ -194,12 +196,7 @@ class StorageAuthzDb(FerryFileRetriever):
             """
             if item.get("username") == "simons" :
                 continue
-            if item.get("username") == "bjwhite":
-                item["uid"] = "0"
-                item.get(group_kword).append(0)
-            if item.get("username") in ("litvinse", "fuess"):
-                item.get(group_kword).append(0)
-            if item.get("username") in ("ifisk","rrana",):
+            if item.get("username") == "ifisk" :
                 item["root"] = "/pnfs/fnal.gov/usr/Simons"
                 if  self.ferry.api_version == 1:
                     item["uid"] = "49331"
@@ -210,7 +207,7 @@ class StorageAuthzDb(FerryFileRetriever):
             if item.get("username") == "auger" :
                 item["root"] = "/pnfs/fnal.gov/usr/fermigrid/volatile/auger"
             try:
-                gids = map(int, item.get(group_kword))
+                gids=map(int,item.get(group_kword))
             except Exception as e:
                 continue
             gids.sort()
@@ -246,67 +243,6 @@ class VoGroup(FerryFileRetriever):
         os.write(fd,json.dumps(body, indent=4, sort_keys=True))
         return name
 
-class CapabilitySet(FerryFileRetriever):
-
-    def __init__(self, ferryconnect):
-        super(CapabilitySet, self).__init__(ferryconnect,
-                                         "getCapabilitySet",
-                                         "/tmp/foo.json")
-
-    def write_file(self):
-        passwd = self.ferry.execute("getStorageAuthzDBFile?passwdmode")
-        group = self.ferry.execute("getAllGroups")
-        group = [i for i in group if i.get("grouptype") == "UnixGroup"]
-        groups = {}
-        for i in group:
-            groups[i["groupname"]] = i["gid"]
-        passwd = passwd.get("fermilab").get("resources").get("all")
-        users = {}
-        for i in passwd:
-            users[i["username"]] = i["uid"]
-
-        body = self.ferry.execute(self.query)
-
-        f1 = open("/tmp/multimap.conf", "w")
-        f2 = open("/tmp/multimap_prd.conf", "w")
-        f = None
-
-        for item in body:
-            roles = item.get("roles")
-            if not roles: continue
-            uname = item.get("setname")
-
-            uid = users.get(uname)
-            if not uid:
-                continue
-
-            for role_data in roles:
-                role = role_data.get("role")
-                if not role : continue
-                group_name = role_data.get("mappedgroup")
-
-                gid = groups.get(group_name)
-                if not gid:
-                    continue
-
-
-                if not group_name: continue
-                unit_name = role_data.get("unitname")
-                if role == "Analysis" :
-                    fqan = "/"+unit_name
-                    f = f1
-                else:
-                    fqan = "/" + unit_name + "/" + role.lower()
-                    f = f2
-                f.write("oidcgrp:%s username:%s uid:%s gid:%s,true\n" %
-                        (fqan, uname, uid, gid))
-
-        map(lambda x: x.close(), (f1, f2))
-
-        fd, name = tempfile.mkstemp(text=True)
-        os.write(fd,json.dumps(body, indent=4, sort_keys=True))
-        return name
-
 
 class Passwd(FerryFileRetriever):
     def __init__(self, ferryconnect):
@@ -337,43 +273,6 @@ class Passwd(FerryFileRetriever):
                                                                x.get("shell"),)),
             b)
         os.close(fd)
-        return name
-
-
-class BanFile(FerryFileRetriever):
-    def __init__(self, ferryconnect):
-        query = "getAllUsersFQANs?suspend=true"
-        super(BanFile, self).__init__(ferryconnect,
-                                      query,
-                                      "/etc/dcache/ban_ferry.conf")
-
-    def write_file(self):
-        body = self.ferry.execute(self.query)
-        passwd = []
-        b = []
-        fd, name = tempfile.mkstemp(text=True)
-        os.write(fd,("alias name=org.dcache.auth.UserNamePrincipal\n"
-                     "alias dn=org.globus.gsi.gssapi.jaas.GlobusPrincipal\n"
-                     "alias kerberos=javax.security.auth.kerberos.KerberosPrincipal\n"
-                     "alias fqan=org.dcache.auth.FQANPrincipal\n"))
-        for k, v in body.iteritems():
-            os.write(fd, "ban user:%s\n" % (k, ))
-        os.close(fd)
-
-
-#        for k,v in body.iteritems():
-#            for key, value in v.get("resources").iteritems():
-#                b += filter(lambda x : x.get("uid") not in passwd, value)
-#                passwd += [x.get("uid") for x in value]
-#        b.sort(key=lambda x: x["username"])
-#        map(lambda x: os.write(fd,"%s:x:%s:%s:\"%s\":%s:%s\n"%(x.get("username"),
-#                                                               x.get("uid"),
-#                                                               x.get("gid"),
-#                                                               x.get("gecos"),
-#                                                               x.get("homedir"),
-#                                                               x.get("shell"),)),
-#            b)
-#        os.close(fd)
         return name
 
 
@@ -422,13 +321,8 @@ if __name__ == "__main__":
 
     fail = False
     fails = {}
-    for i in (Passwd(f),
-              Group(f),
-              GridMapFile(f),
-              StorageAuthzDb(f),
-              VoGroup(f),
-              CapabilitySet(f),
-              BanFile(f),):
+    for i in (Passwd(f), Group(f), GridMapFile(f), StorageAuthzDb(f), VoGroup(f)):
+
         try:
             i.retrieve()
         except Exception as e:
@@ -440,3 +334,10 @@ if __name__ == "__main__":
         for key, value in fails.items():
              print_error("%s : %s"%(key, value,))
         sys.exit(1)
+
+
+
+
+
+
+

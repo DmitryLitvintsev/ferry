@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 
 from __future__ import print_function
 
@@ -7,17 +7,22 @@ import os
 import re
 import requests
 import shutil
+import string
 import sys
 import tempfile
 import time
 import urllib3
 urllib3.disable_warnings()
 
+try:
+    from StringIO import StringIO
+except ImportError:
+    from io import BytesIO  as StringIO
+
 
 SUCCESS="success"
 NULL_CAPABILITY = "/Capability=NULL"
 NULL_ROLE = "/Role=NULL"
-
 
 def filterOutNullCapability(fqan):
     return re.sub(NULL_CAPABILITY,"",fqan)
@@ -129,19 +134,19 @@ class GridMapFile(FerryFileRetriever):
     def __init__(self,ferryconnect):
         super(GridMapFile,self).__init__(ferryconnect,
                                          "getGridMapFile",
-                                         "/etc/grid-security/grid-mapfile.1")
+                                         "/etc/grid-security/grid-mapfile")
 
     def write_file(self):
         dn_kword = "dn"
         name_kword = "username"
         body = self.ferry.execute(self.query)
-        body = sorted(body, key=lambda x: x[dn_kword])
+        body.sort(key=lambda x: x[dn_kword])
         fd, name = tempfile.mkstemp(text=True)
-        for x in body:
-            os.write(fd,str.encode("\"%s\" %s\n"%(x.get(dn_kword)
-                                                  .replace("/postalCode","/PostalCode")
-                                                  .replace("/street","/STREET"),
-                                                  x.get(name_kword))))
+        map(lambda x: os.write(fd,"\"%s\" %s\n"%(x.get(dn_kword)
+                                                 .replace("/postalCode","/PostalCode")
+                                                 .replace("/street","/STREET"),
+                                                 x.get(name_kword))),
+            body)
         os.close(fd)
         return name
 
@@ -151,14 +156,14 @@ class StorageAuthzDb(FerryFileRetriever):
     def __init__(self, ferryconnect):
         super(StorageAuthzDb, self).__init__(ferryconnect,
                                              "getStorageAuthzDBFile",
-                                             "/etc/grid-security/storage-authzdb.1")
+                                             "/etc/grid-security/storage-authzdb")
 
     def write_file(self):
         body = self.ferry.execute(self.query)
         group_kword = "groups"
         home_kword = "homedir"
         path_kword = "path"
-        body = sorted(body, key=lambda x: x["username"])
+        body.sort(key=lambda x: x["username"])
         fd, name = tempfile.mkstemp(text=True)
         for item in body:
             """
@@ -181,17 +186,17 @@ class StorageAuthzDb(FerryFileRetriever):
                 gids = map(int, item.get(group_kword))
             except Exception as e:
                 continue
-            gids = sorted(gids)
-            s = "%s" % " ".join([item.get("decision","authorize"),
-                                 item.get("username"),
-                                 item.get("privileges"),
-                                 str(item.get("uid")),
-                                 ",".join(map(str,gids)),
-                                 item.get(home_kword,"/"),
-                                 item.get("root"),
-                                 item.get(path_kword,"/")])
+            gids.sort()
 
-            os.write(fd, str.encode("%s\n" % s))
+            os.write(fd,"%s\n"%(string.join([item.get("decision","authorize"),
+                                             item.get("username"),
+                                             item.get("privileges"),
+                                             str(item.get("uid")),
+                                             string.join(map(str,gids),","),
+                                             item.get(home_kword,"/"),
+                                             item.get("root"),
+                                             item.get(path_kword,"/")],
+                                            " ")))
         os.close(fd)
         return name
 
@@ -201,16 +206,16 @@ class VoGroup(FerryFileRetriever):
     def __init__(self, ferryconnect):
         super(VoGroup, self).__init__(ferryconnect,
                                          "getMappedGidFile",
-                                         "/etc/grid-security/vo-group.json.1")
+                                         "/etc/grid-security/vo-group.json")
 
     def write_file(self):
         body = self.ferry.execute(self.query)
-        body = sorted(body, key=lambda x: x["fqan"], reverse=True)
+        body.sort(key=lambda x: x["fqan"], reverse=True)
         fd, name = tempfile.mkstemp(text=True)
         for item in body:
             item["fqan"] = massageProduction(massageWildcard(filterOutNullRole(filterOutNullCapability(item.get("fqan")))))
             item["mapped_gid"] = str(item["mapped_gid"])
-        os.write(fd, str.encode(json.dumps(body, indent=4, sort_keys=True)))
+        os.write(fd, json.dumps(body, indent=4, sort_keys=True))
         return name
 
 
@@ -219,7 +224,7 @@ class CapabilitySetAnalysis(FerryFileRetriever):
     def __init__(self, ferryconnect):
         super(CapabilitySetAnalysis, self).__init__(ferryconnect,
                                          "getCapabilitySet",
-                                         "/etc/dcache/multimap.conf.1")
+                                         "/etc/dcache/multimap.conf")
 
 
     def write_file(self):
@@ -260,8 +265,8 @@ class CapabilitySetAnalysis(FerryFileRetriever):
                 unit_name = role_data.get("unitname")
                 if role == "Analysis" :
                     fqan = "/"+unit_name
-                    os.write(fd, str.encode("oidcgrp:%s username:%s uid:%s gid:%s,true\n" %
-                             (fqan, uname, uid, gid)))
+                    os.write(fd, "oidcgrp:%s username:%s uid:%s gid:%s,true\n" %
+                             (fqan, uname, uid, gid))
         os.close(fd)
         return name
 
@@ -272,7 +277,7 @@ class CapabilitySetPrd(FerryFileRetriever):
     def __init__(self, ferryconnect):
         super(CapabilitySetPrd, self).__init__(ferryconnect,
                                                "getCapabilitySet",
-                                               "/etc/dcache/multimap_prd.conf.1")
+                                               "/etc/dcache/multimap_prd.conf")
 
 
     def write_file(self):
@@ -313,8 +318,8 @@ class CapabilitySetPrd(FerryFileRetriever):
                 unit_name = role_data.get("unitname")
                 if role != "Analysis" :
                     fqan = "/" + unit_name + "/" + role.lower()
-                    os.write(fd, str.encode("oidcgrp:%s username:%s uid:%s gid:%s,true\n" %
-                             (fqan, uname, uid, gid)))
+                    os.write(fd, "oidcgrp:%s username:%s uid:%s gid:%s,true\n" %
+                             (fqan, uname, uid, gid))
         os.close(fd)
         return name
 
@@ -325,25 +330,25 @@ class Passwd(FerryFileRetriever):
 
         super(Passwd, self).__init__(ferryconnect,
                                      query,
-                                     "/etc/grid-security/passwd.1")
+                                     "/etc/grid-security/passwd")
 
     def write_file(self):
         body = self.ferry.execute(self.query)
         passwd = []
         b = []
         fd, name = tempfile.mkstemp(text=True)
-        for k,v in body.items():
-            for key, value in v.get("resources").items():
+        for k,v in body.iteritems():
+            for key, value in v.get("resources").iteritems():
                 b += filter(lambda x : x.get("uid") not in passwd, value)
                 passwd += [x.get("uid") for x in value]
-        b = sorted(b, key=lambda x: x["username"])
-        for x in b:
-            os.write(fd, str.encode("%s:x:%s:%s:\"%s\":%s:%s\n"%(x.get("username"),
-                                                                 x.get("uid"),
-                                                                 x.get("gid"),
-                                                                 x.get("gecos"),
-                                                                 x.get("homedir"),
-                                                                 x.get("shell"),)))
+        b.sort(key=lambda x: x["username"])
+        map(lambda x: os.write(fd,"%s:x:%s:%s:\"%s\":%s:%s\n"%(x.get("username"),
+                                                               x.get("uid"),
+                                                               x.get("gid"),
+                                                               x.get("gecos"),
+                                                               x.get("homedir"),
+                                                               x.get("shell"),)),
+            b)
         os.close(fd)
         return name
 
@@ -353,7 +358,7 @@ class BanFile(FerryFileRetriever):
         query = "getAllUsersFQANs?suspend=true"
         super(BanFile, self).__init__(ferryconnect,
                                       query,
-                                      "/etc/dcache/ban_ferry.conf.1")
+                                      "/etc/dcache/ban_ferry.conf")
 
     def write_file(self):
         body = self.ferry.execute(self.query)
@@ -365,13 +370,28 @@ class BanFile(FerryFileRetriever):
                      "alias kerberos=javax.security.auth.kerberos.KerberosPrincipal\n"
                      "alias fqan=org.dcache.auth.FQANPrincipal\n"
                      "alias sub=org.dcache.auth.JwtSubPrincipal\n").encode())
-        for k, v in body.items():
-            os.write(fd, str.encode("ban user:%s\n" % (k, )))
+        for k, v in body.iteritems():
+            os.write(fd, "ban user:%s\n" % (k, ))
         body = self.ferry.execute("getAllUsers")
         for user in body:
             if user.get("banned"):
-                os.write(fd, str.encode("ban sub:%s\n" % (user.get("vopersonid"),)))
+                os.write(fd, "ban sub:%s\n" % (user.get("vopersonid"),))
         os.close(fd)
+
+
+#        for k,v in body.iteritems():
+#            for key, value in v.get("resources").iteritems():
+#                b += filter(lambda x : x.get("uid") not in passwd, value)
+#                passwd += [x.get("uid") for x in value]
+#        b.sort(key=lambda x: x["username"])
+#        map(lambda x: os.write(fd,"%s:x:%s:%s:\"%s\":%s:%s\n"%(x.get("username"),
+#                                                               x.get("uid"),
+#                                                               x.get("gid"),
+#                                                               x.get("gecos"),
+#                                                               x.get("homedir"),
+#                                                               x.get("shell"),)),
+#            b)
+#        os.close(fd)
         return name
 
 
@@ -380,14 +400,14 @@ class Group(FerryFileRetriever):
         query = "getAllGroupsMembers"
         super(Group, self).__init__(ferryconnect,
                                     query,
-                                    "/etc/grid-security/group.1")
+                                    "/etc/grid-security/group")
 
     def write_file(self):
         body = self.ferry.execute(self.query)
         kword = "groupname"
         body = filter(lambda x: x["grouptype"] == "UnixGroup", body)
 
-        body = sorted(body,key=lambda x: x[kword])
+        body.sort(key=lambda x: x[kword])
         fd, name = tempfile.mkstemp(text=True)
         for i in body:
             group = str(i.get(kword))
@@ -398,8 +418,8 @@ class Group(FerryFileRetriever):
             users = i.get("members",[])
             if not users : users = []
             users = filter(lambda x : x["username"] != "", users)
-            users = sorted(users, key=lambda x: x["username"])
-            os.write(fd, str.encode("%s:x:%s:%s\n" % (group, gid, ",".join([ x['username'] for x in users]))))
+            users.sort(key=lambda x: x["username"])
+            os.write(fd,"%s:x:%s:%s\n" % (group, gid, string.join([ x['username'] for x in users],",")))
         os.close(fd)
         return name
 
@@ -423,7 +443,6 @@ def main():
         except Exception as e:
             fail = True
             fails[str(i)]=str(e)
-            raise e
 
     if fail:
         print_error("Failed to retrieve")
