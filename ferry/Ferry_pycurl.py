@@ -61,8 +61,7 @@ def execute_command(cmd):
                                                               errors.replace('\n',' ')))
     return rc
 
-#DEFAULT_HOST = "fermicloud033.fnal.gov"
-DEFAULT_HOST = "ferry.fnal.gov"
+DEFAULT_HOST = "ferry"
 DEFAULT_PORT = 8445
 
 class Ferry(object):
@@ -334,10 +333,3 @@ if __name__ == "__main__":
         for key, value in fails.items():
              print_error("%s : %s"%(key, value,))
         sys.exit(1)
-
-
-
-
-
-
-
