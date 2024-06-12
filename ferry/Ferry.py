@@ -52,21 +52,28 @@ def print_message(text):
                      text+"\n")
     sys.stdout.flush()
 
+"""
+The config file has to have :
+
+ferry_endpoint: https://example.org:8445
+
+"""
 
 CONFIG_FILE="/etc/ferry/ferry.yaml"
 
 with open(CONFIG_FILE, "r") as f:
     configuration = yaml.safe_load(f)
 
-DEFAULT_HOST = configuration["ferry_hostname"]
+FERRY_ENDPOINT = configuration["ferry_endpoint"]
 DEFAULT_PORT = 8445
+
 
 class Ferry:
 
-    def __init__(self, host=None, port=None):
-        self.host = host if host else DEFAULT_HOST
-        self.port = port if port is not None else DEFAULT_PORT
-        self.url = "https://"+self.host+":"+str(self.port) + "/"
+    def __init__(self, url=None):
+        self.url = url if url else FERRY_ENDPOINT
+        if not self.url.endswith("/"):
+            self.url += "/"
         self.session = requests.Session()
         self.session.cert = ("/etc/grid-security/hostcert.pem",
                              "/etc/grid-security/hostkey.pem")
