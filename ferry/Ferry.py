@@ -11,6 +11,9 @@ import sys
 import tempfile
 import time
 import urllib3
+import yaml
+
+
 urllib3.disable_warnings()
 
 
@@ -49,9 +52,14 @@ def print_message(text):
                      text+"\n")
     sys.stdout.flush()
 
-DEFAULT_HOST = "ferry.fnal.gov"
-DEFAULT_PORT = 8445
 
+CONFIG_FILE="/etc/ferry/ferry.yaml"
+
+with open(CONFIG_FILE, "r") as f:
+    configuration = yaml.safe_load(f)
+
+DEFAULT_HOST = configuration["ferry_hostname"]
+DEFAULT_PORT = 8445
 
 class Ferry:
 
@@ -129,7 +137,7 @@ class GridMapFile(FerryFileRetriever):
     def __init__(self,ferryconnect):
         super(GridMapFile,self).__init__(ferryconnect,
                                          "getGridMapFile",
-                                         "/etc/grid-security/grid-mapfile.1")
+                                         "/etc/grid-security/grid-mapfile")
 
     def write_file(self):
         dn_kword = "dn"
@@ -151,7 +159,7 @@ class StorageAuthzDb(FerryFileRetriever):
     def __init__(self, ferryconnect):
         super(StorageAuthzDb, self).__init__(ferryconnect,
                                              "getStorageAuthzDBFile",
-                                             "/etc/grid-security/storage-authzdb.1")
+                                             "/etc/grid-security/storage-authzdb")
 
     def write_file(self):
         body = self.ferry.execute(self.query)
@@ -201,7 +209,7 @@ class VoGroup(FerryFileRetriever):
     def __init__(self, ferryconnect):
         super(VoGroup, self).__init__(ferryconnect,
                                          "getMappedGidFile",
-                                         "/etc/grid-security/vo-group.json.1")
+                                         "/etc/grid-security/vo-group.json")
 
     def write_file(self):
         body = self.ferry.execute(self.query)
@@ -219,7 +227,7 @@ class CapabilitySetAnalysis(FerryFileRetriever):
     def __init__(self, ferryconnect):
         super(CapabilitySetAnalysis, self).__init__(ferryconnect,
                                          "getCapabilitySet",
-                                         "/etc/dcache/multimap.conf.1")
+                                         "/etc/dcache/multimap.conf")
 
 
     def write_file(self):
@@ -272,7 +280,7 @@ class CapabilitySetPrd(FerryFileRetriever):
     def __init__(self, ferryconnect):
         super(CapabilitySetPrd, self).__init__(ferryconnect,
                                                "getCapabilitySet",
-                                               "/etc/dcache/multimap_prd.conf.1")
+                                               "/etc/dcache/multimap_prd.conf")
 
 
     def write_file(self):
@@ -325,7 +333,7 @@ class Passwd(FerryFileRetriever):
 
         super(Passwd, self).__init__(ferryconnect,
                                      query,
-                                     "/etc/grid-security/passwd.1")
+                                     "/etc/grid-security/passwd")
 
     def write_file(self):
         body = self.ferry.execute(self.query)
@@ -353,7 +361,7 @@ class BanFile(FerryFileRetriever):
         query = "getAllUsersFQANs?suspend=true"
         super(BanFile, self).__init__(ferryconnect,
                                       query,
-                                      "/etc/dcache/ban_ferry.conf.1")
+                                      "/etc/dcache/ban_ferry.conf")
 
     def write_file(self):
         body = self.ferry.execute(self.query)
@@ -380,7 +388,7 @@ class Group(FerryFileRetriever):
         query = "getAllGroupsMembers"
         super(Group, self).__init__(ferryconnect,
                                     query,
-                                    "/etc/grid-security/group.1")
+                                    "/etc/grid-security/group")
 
     def write_file(self):
         body = self.ferry.execute(self.query)
