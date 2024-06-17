@@ -1,26 +1,28 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 
 from __future__ import print_function
 
 import json
+import multiprocessing
 import os
 import re
 import requests
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
 import urllib3
 import yaml
-
-
 urllib3.disable_warnings()
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
+printLock = multiprocessing.Lock()
 
 SUCCESS="success"
 NULL_CAPABILITY = "/Capability=NULL"
 NULL_ROLE = "/Role=NULL"
-
 
 def filterOutNullCapability(fqan):
     return re.sub(NULL_CAPABILITY,"",fqan)
@@ -52,6 +54,7 @@ def print_message(text):
                      text+"\n")
     sys.stdout.flush()
 
+
 """
 The config file has to have :
 
@@ -63,6 +66,8 @@ CONFIG_FILE="/etc/ferry/ferry.yaml"
 
 with open(CONFIG_FILE, "r") as f:
     configuration = yaml.safe_load(f)
+
+print (configuration)
 
 FERRY_ENDPOINT = configuration["ferry_endpoint"]
 DEFAULT_PORT = 8445
@@ -418,6 +423,23 @@ class Group(FerryFileRetriever):
         os.close(fd)
         return name
 
+class Worker(multiprocessing.Process):
+
+    def __init__(self, queue):
+        super(Worker, self).__init__()
+        self.queue = queue
+
+    def run(self):
+        for i in iter(self.queue.get, None):
+            try:
+                i.retrieve()
+            except Exception as e:
+                with printLock:
+                    print_error("Failed to retrieve: %s %s" % (str(i), str(e),))
+                raise e
+                pass
+        return
+
 
 def main():
 
@@ -427,25 +449,49 @@ def main():
         print_error(str(e))
         sys.exit(1)
 
-    fail = False
-    fails = {}
-    for i in (Passwd(f), Group(f), GridMapFile(f),
-              StorageAuthzDb(f), VoGroup(f),
-              CapabilitySetAnalysis(f), CapabilitySetPrd(f),
-              BanFile(f)):
-        try:
-            i.retrieve()
-        except Exception as e:
-            fail = True
-            fails[str(i)]=str(e)
-            raise e
 
-    if fail:
-        print_error("Failed to retrieve")
-        for key, value in fails.items():
-             print_error("%s : %s"%(key, value,))
-        sys.exit(1)
+    retrievers = [i for i in (Passwd(f), Group(f), GridMapFile(f),
+                              StorageAuthzDb(f), VoGroup(f),
+                              CapabilitySetAnalysis(f), CapabilitySetPrd(f),
+                              BanFile(f))]
+    QUEUE_LENGTH = len(retrievers)
 
+    queue = multiprocessing.Queue(QUEUE_LENGTH)
+    workers = []
+
+    for i in range(QUEUE_LENGTH):
+        worker = Worker(queue)
+        workers.append(worker)
+        worker.start()
+
+    for i in retrievers:
+        queue.put(i)
+
+    for i in range(QUEUE_LENGTH):
+        queue.put(None)
+
+    for worker in workers:
+        worker.join()
+#
+#
+#    fail = False
+#    fails = {}
+#    for i in (Passwd(f), Group(f), GridMapFile(f),
+#              StorageAuthzDb(f), VoGroup(f),
+#              CapabilitySetAnalysis(f), CapabilitySetPrd(f),
+#              BanFile(f)):
+#        try:
+#            i.retrieve()
+#        except Exception as e:
+#            fail = True
+#            fails[str(i)]=str(e)
+#
+#    if fail:
+#        print_error("Failed to retrieve")
+#        for key, value in fails.items():
+#             print_error("%s : %s"%(key, value,))
+#        sys.exit(1)
+#
 
 if __name__ == "__main__":
     main()
