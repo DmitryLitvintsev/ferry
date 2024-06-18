@@ -83,7 +83,7 @@ class Ferry:
         self.session.cert = ("/etc/grid-security/hostcert.pem",
                              "/etc/grid-security/hostkey.pem")
 
-        #self.session.verify = "/etc/grid-security/certificates"
+        self.session.verify = "/etc/grid-security/certificates"
 
         self.session.headers = { "accept" : "application/json",
                                  "content-type" : "application/json"}
